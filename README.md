@@ -1,5 +1,3 @@
-[![Build Status](https://dev.azure.com/appdev-gbb/kubernetes-hackfest/_apis/build/status/dstrebel.kubernetes-hackfest)](https://dev.azure.com/appdev-gbb/kubernetes-hackfest/_build/latest?definitionId=2)
-
 ## Prerequisites 
 The following are the basic requirements to **start** the labs. Individual labs may have other requirements that will be listed within the lab.
 
@@ -30,13 +28,15 @@ The following are the basic requirements to **start** the labs. Individual labs 
 * [Service Mesh](labs/servicemesh/README.md)
 * [Best Practices for Cluster Operators](labs/best-practices/operators/README.md)
 * [Best Practices for App Developers](labs/best-practices/appdev/README.md)
+* [Calico lab exercise](labs/networking/calico-lab-exercise/README.md)
+* [Kubecost - Kubernetes Cost Insights](labs/monitoring-logging/kubecost/README.md)
 
 #### Coming soon:
 * [Storage](labs/storage/README.md)
 * [Service Broker](labs/service-broker/README.md)
 * [Using OpenFaaS on AKS](labs/open-faas/README.md)
 
-
+  
 # Contributing
 
 This project welcomes contributions and suggestions, unless you are Bruce Wayne.  Most contributions require you to agree to a

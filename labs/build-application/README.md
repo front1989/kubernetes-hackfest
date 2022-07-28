@@ -7,6 +7,9 @@ In this lab we will build Docker containers for each of the application componen
 * Complete previous labs:
     * [Azure Kubernetes Service](../create-aks-cluster/README.md)
 
+> *NOTE:* If you restarted your shell session, you need to reload your environment variables. You can use the following command:
+> source ~/workshopvars.env 
+
 ## Instructions
 
 1. Create Azure Container Registry (ACR)
@@ -21,20 +24,18 @@ In this lab we will build Docker containers for each of the application componen
     # Check ACR Name (Can Only Container lowercase)
     echo $ACRNAME
     # Persist for Later Sessions in Case of Timeout
-    echo export ACRNAME=acrhackfest$UNIQUE_SUFFIX >> ~/.bashrc
+    echo export ACRNAME=acrhackfest$UNIQUE_SUFFIX >> ~/workshopvars.env
     # Create Azure Container Registry
     az acr create --resource-group $RGNAME --name $ACRNAME --sku Basic
     ```
 
-2. Run bash script to authenticate with Azure Container Registry from AKS
-
-    Running this script will grant the Service Principal created at cluster creation time access to ACR.
-
-    **NOTE: If the below role assignment fails due to permissions, we will do it the hard way and create an Image Pull Secret.**
+1. Attach the Azure Container Registery to the AKS Cluster
 
     ```bash
-    sh labs/build-application/reg-acr.sh $RGNAME $CLUSTERNAME $ACRNAME
+    az aks update -n $CLUSTERNAME -g $RGNAME --attach-acr $ACRNAME
     ```
+
+    **NOTE: If the role assignment fails due to permissions, we will do it the hard way and create an Image Pull Secret.**
 
     ```bash
     # !!!!!!!!!!
@@ -43,24 +44,25 @@ In this lab we will build Docker containers for each of the application componen
 
     # Extract Container Registry details needed for Login
     # Login Server
-    az acr show -n ${ACRNAME} --query "{acrLoginServer:loginServer}" -o table
+    ACR_FQDN=$(az acr show -n $ACRNAME --query "{acrLoginServer:loginServer}" -o tsv)
     # Enable ACR admin 
-    az acr update -n ${ACRNAME} --admin-enabled true
+    az acr update -n $ACRNAME --admin-enabled true
     # Registry Username and Password
-    az acr credential show -n ${ACRNAME}
+    ACR_USER=$(az acr credential show -n $ACRNAME --query "username" -o tsv)
+    ACR_PASSWD=$(az acr credential show -n $ACRNAME --query "passwords[0].value" -o tsv)
 
     # Use the login and credential information from above
     kubectl create -n hackfest secret docker-registry regcred \
-      --docker-server=<LOGIN SERVER GOES HERE> \
-      --docker-username=<USERNAME GOES HERE> \
-      --docker-password=<PASSWORD GOES HERE>
+      --docker-server=$ACR_FQDN \
+      --docker-username=$ACR_USER \
+      --docker-password=$ACR_PASSWD
 
     # !!!!!!!!!!
     # Only do these steps if the above Service Principal Role Assignment fails.
     # !!!!!!!!!!
     ```
 
-3. Create Application Insights Instance
+1. Create Application Insights Instance
 
     Continue using the same resource group that was created previously
     
@@ -68,73 +70,32 @@ In this lab we will build Docker containers for each of the application componen
     # Create a unique application insights name
     APPINSIGHTSNAME=appInsightshackfest$UNIQUE_SUFFIX
     # Deploy the appinsights ARM template   
-    az deployment group create --resource-group $RGNAME --template-file labs/build-application/app-Insights.json --parameters type=Node.js name=$APPINSIGHTSNAME regionId=eastus --no-wait
-    ```
-
-    Alternatively :    
-
-    * In your Azure portal, click "Create a resource", select "Developer tools", and choose "Application Insights"
-    * Pick a unique name (you can use the unique identifier created in the 1st lab)
-    * Use "Node.js Application" for the app type
-    * Select "kubernetes-hackfest" for the Resource Group
-    * Use "East US" for location
-    * When this is completed, select "All services", and search for "Application Insights" 
-    * Select your newly created Application Insights instance
-    * On the Overview Page take note of the Instrumentation Key 
-
-        ![App Insights](app-insights.png "App Insights")
-
-4. Deploy Cosmos DB
-
-    In this step, create a Cosmos DB account for the Mongo api. Again, we will create a random, unique name.
-
-    ```bash
-    export COSMOSNAME=cosmos$UNIQUE_SUFFIX
-    # Check COSMOS Name
-    echo $COSMOSNAME
-    # Persist for Later Sessions in Case of Timeout
-    echo export COSMOSNAME=cosmos$UNIQUE_SUFFIX >> ~/.bashrc
-    # Create Cosmos DB
-    az cosmosdb create --name $COSMOSNAME --resource-group $RGNAME --kind MongoDB
-    ```
-
-    You can validate your Cosmos instance in the portal. The credentials and connect string will be used in the next lab.
-
-5. Create Kubernetes secrets for access to CosmosDB and App Insights
-
-    You will use a secret to hold the credentials for our backend database and Azure App Insights. In the next lab, you will use this secret as a part of your deployment manifests.
-
-    Once the secret is created, these envvars are no longer needed. 
-
-    * Set the CosmosDB user and password
-
-    ```bash
-    export MONGODB_USER=$(az cosmosdb show --name $COSMOSNAME --resource-group $RGNAME --query "name" -o tsv)
+    az deployment group create --resource-group $RGNAME --template-file labs/build-application/app-Insights.json --parameters type=Node.js name=$APPINSIGHTSNAME regionId=eastus
     ```
 
     ```bash
-    export MONGODB_PASSWORD=$(az cosmosdb keys list --name $COSMOSNAME --resource-group $RGNAME --query "primaryMasterKey" -o tsv)
+    # Get the Instrumentation Key. If you get an error, wait a few seconds and run this again.
+    export APPINSIGHTS_INSTRUMENTATIONKEY=$(az resource show -g $RGNAME -n $APPINSIGHTSNAME --resource-type "microsoft.insights/components" --query properties.InstrumentationKey -o tsv)
     ```
 
-    Use Instrumentation Key from step 3 above.
+2. Create Kubernetes secrets for access to App Insights
+
+    You will use a secret to hold the API Key for App Insights. This is used by the pods once we deploy the app.
+
     ```bash
-    export APPINSIGHTS_INSTRUMENTATIONKEY='replace-me'
+    kubectl create secret generic app-insights-secret --from-literal=appinsights=$APPINSIGHTS_INSTRUMENTATIONKEY -n hackfest
     ```
 
-    ```bash
-    kubectl create secret generic cosmos-db-secret --from-literal=user=$MONGODB_USER --from-literal=pwd=$MONGODB_PASSWORD --from-literal=appinsights=$APPINSIGHTS_INSTRUMENTATIONKEY -n hackfest
-    ```
-
-6. Create Docker containers in ACR
+3. Create Docker containers in ACR
 
     In this step we will create a Docker container image for each of our microservices. We will use ACR Builder functionality to build and store these images in the cloud. 
 
     ```bash
-    az acr build -t hackfest/data-api:1.0 -r $ACRNAME --no-logs -o json app/data-api
-    az acr build -t hackfest/flights-api:1.0 -r $ACRNAME --no-logs -o json app/flights-api
-    az acr build -t hackfest/quakes-api:1.0 -r $ACRNAME --no-logs -o json app/quakes-api
-    az acr build -t hackfest/weather-api:1.0 -r $ACRNAME --no-logs -o json app/weather-api
-    az acr build -t hackfest/service-tracker-ui:1.0 -r $ACRNAME --no-logs -o json app/service-tracker-ui
+    az acr build -t hackfest/data-api:1.0 -r $ACRNAME --no-logs -o json app/data-api --no-wait
+    az acr build -t hackfest/flights-api:1.0 -r $ACRNAME --no-logs -o json app/flights-api --no-wait
+    az acr build -t hackfest/quakes-api:1.0 -r $ACRNAME --no-logs -o json app/quakes-api --no-wait
+    az acr build -t hackfest/weather-api:1.0 -r $ACRNAME --no-logs -o json app/weather-api --no-wait
+    az acr build -t hackfest/service-tracker-ui:1.0 -r $ACRNAME --no-logs -o json app/service-tracker-ui --no-wait
     ```
 
     You can see the status of the builds by running the command below.

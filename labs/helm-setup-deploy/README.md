@@ -17,7 +17,7 @@ In this lab we will setup Helm in our AKS cluster and deploy our application wit
 helm version
 
 # Example Output:
-version.BuildInfo{Version:"v3.3.0-rc.1", GitCommit:"5c2dfaad847df2ac8f289d278186d048f446c70c", GitTreeState:"dirty", GoVersion:"go1.14.4"}
+version.BuildInfo{Version:"v3.8.0", GitCommit:"d14138609b01886f544b2025f5000351c9eb092e", GitTreeState:"clean", GoVersion:"go1.17.5"}
 ```
 
 1. Review the Helm Chart components
@@ -48,7 +48,7 @@ version.BuildInfo{Version:"v3.3.0-rc.1", GitCommit:"5c2dfaad847df2ac8f289d278186
         Replace all `acrServer` values:
         ```bash
         export ACRSERVER=$(az acr list -g $RGNAME -o table --query "[].loginServer" --output json | jq -r '.[]')
-        echo "export ACRSERVER=$ACRSERVER" >> ~/.bashrc
+        echo "export ACRSERVER=$ACRSERVER" >> ~/workshopvars.env
         find charts -name values.yaml -exec sed -i 's/youracr.azurecr.io/'${ACRSERVER}'/g' {} \;
 
         ```
@@ -119,7 +119,19 @@ version.BuildInfo{Version:"v3.3.0-rc.1", GitCommit:"5c2dfaad847df2ac8f289d278186
         ...
         ```
 
-1. Deploy Charts
+1. Deploy MongoDB
+
+    ```bash
+    kubectl apply -f charts/mongo/.
+    ```
+
+    Wait for the mongo pod to be in 'Ready' state before deploying the rest of the application. You can watch the pod status with the following:
+
+    ```bash
+    watch kubectl get pods -n hackfest
+    ```
+
+2. Deploy Charts
 
     Ensure namespace was created earlier:
     ```bash
@@ -141,7 +153,7 @@ version.BuildInfo{Version:"v3.3.0-rc.1", GitCommit:"5c2dfaad847df2ac8f289d278186
     helm upgrade --install service-tracker-ui charts/service-tracker-ui --namespace hackfest
     ```
 
-1. Initialize application
+3. Initialize application
 
     * First check to see if pods and services are working correctly
 
